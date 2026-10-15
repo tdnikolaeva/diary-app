@@ -2,16 +2,9 @@
 
 # python
 __pycache__/
-*.pyc
-*.pyo
 .venv/
 venv/
 env/
 
 # editor
 .vscode/
-.idea/
-*.swp
-
-# os
-.DS_Store
