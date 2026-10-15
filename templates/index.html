@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Дневничок</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 24px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+        h1 { margin-top: 0; color: #2c3e50; }
+        .layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 24px;
+            margin-top: 20px;
+        }
+        .calendar {
+            background: #fafbfc;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #e1e6eb;
+        }
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        .calendar-header button {
+            background: none;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            cursor: pointer;
+            padding: 4px 10px;
+            font-size: 14px;
+        }
+        .calendar-header button:hover:not(:disabled) { background: #eef2f6; }
+        .calendar-header button:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .calendar-grid .dow {
+            text-align: center;
+            font-size: 11px;
+            color: #7a8694;
+            font-weight: 600;
+            padding: 4px 0;
+        }
+        .calendar-grid .day {
+            text-align: center;
+            padding: 8px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            border: 1px solid transparent;
+            background: white;
+            user-select: none;
+        }
+        .calendar-grid .day:hover { background: #e6f0ff; }
+        .calendar-grid .day.empty {
+            background: transparent;
+            cursor: default;
+        }
+        .calendar-grid .day.empty:hover { background: transparent; }
+        .calendar-grid .day.has-entry {
+            background: #d1f0d8;
+            font-weight: 600;
+        }
+        .calendar-grid .day.selected {
+            background: #3b82f6;
+            color: white;
+        }
+        .calendar-grid .day.selected:hover { background: #3b82f6; }
+        .calendar-grid .day.future {
+            color: #c0c7d0;
+            cursor: not-allowed;
+            background: #f7f9fb;
+        }
+        .calendar-grid .day.future:hover { background: #f7f9fb; }
+
+        .editor h2 { margin-top: 0; }
+        .editor .date-label {
+            color: #555;
+            font-size: 15px;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+        .editor .date-label strong { color: #2c3e50; }
+        .editor textarea {
+            width: 100%;
+            min-height: 280px;
+            padding: 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 15px;
+            resize: vertical;
+            line-height: 1.5;
+        }
+        .actions { margin-top: 12px; display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-primary:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+        .btn-danger { background: #fee2e2; color: #b91c1c; }
+        .btn-danger:hover { background: #fecaca; }
+        .flash {
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+        .flash.success { background: #d1f0d8; color: #166534; }
+        .flash.error { background: #fee2e2; color: #b91c1c; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Дневничок</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endwith %}
+
+    <div class="layout">
+        <div class="calendar">
+            <div class="calendar-header">
+                <button type="button" id="prevMonth">‹</button>
+                <span id="monthLabel"></span>
+                <button type="button" id="nextMonth">›</button>
+            </div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+        </div>
+
+        <div class="editor">
+            <h2>Запись на день</h2>
+
+            {# Дата — просто текст, не кликабельна #}
+            <div class="date-label">
+                Дата: <strong id="dateLabel">{{ selected_date }}</strong>
+            </div>
+
+            <form method="POST" action="{{ url_for('save') }}">
+                {# Скрытое поле — сюда JS кладёт выбранную в календаре дату #}
+                <input type="hidden" id="entry_date" name="entry_date"
+                       value="{{ selected_date }}">
+
+                <textarea id="content" name="content"
+                          placeholder="Что произошло в этот день?">{{ entry.content if entry else '' }}</textarea>
+
+                <div class="actions">
+                    <button type="submit" class="btn btn-primary" id="saveBtn">
+                        💾 Сохранить
+                    </button>
+                </div>
+            </form>
+
+            {% if entry %}
+                <form method="POST" action="{{ url_for('delete', entry_date=selected_date) }}"
+                      style="margin-top:8px;" onsubmit="return confirm('Удалить запись?');">
+                    <button type="submit" class="btn btn-danger">🗑 Удалить запись</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    const datesWithEntries = new Set({{ dates_with_entries|tojson }});
+    const selectedDate = "{{ selected_date }}";
+    const todayISO = "{{ today }}";
+    let currentDate = new Date(selectedDate + "T00:00:00");
+
+    const monthNames = ["Январь","Февраль","Март","Апрель","Май","Июнь",
+                        "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+    const dow = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+
+    const monthLabel = document.getElementById("monthLabel");
+    const grid = document.getElementById("calendarGrid");
+    const prevBtn = document.getElementById("prevMonth");
+    const nextBtn = document.getElementById("nextMonth");
+    const dateLabel = document.getElementById("dateLabel");
+    const dateInput = document.getElementById("entry_date");
+    const saveBtn = document.getElementById("saveBtn");
+
+    const todayDate = new Date(todayISO + "T00:00:00");
+
+    function isNotFutureMonth(year, month) {
+        return (
+            year < todayDate.getFullYear() ||
+            (year === todayDate.getFullYear() && month <= todayDate.getMonth())
+        );
+    }
+
+    function renderCalendar() {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        monthLabel.textContent = monthNames[month] + " " + year;
+
+        const nextMonthDate = new Date(year, month + 1, 1);
+        nextBtn.disabled = !isNotFutureMonth(
+            nextMonthDate.getFullYear(),
+            nextMonthDate.getMonth()
+        );
+
+        grid.innerHTML = "";
+
+        dow.forEach(d => {
+            const el = document.createElement("div");
+            el.className = "dow";
+            el.textContent = d;
+            grid.appendChild(el);
+        });
+
+        const firstDay = new Date(year, month, 1);
+        const startOffset = (firstDay.getDay() + 6) % 7;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        for (let i = 0; i < startOffset; i++) {
+            const el = document.createElement("div");
+            el.className = "day empty";
+            grid.appendChild(el);
+        }
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const el = document.createElement("div");
+            el.className = "day";
+            el.textContent = d;
+
+            const isFuture = iso > todayISO;
+            if (isFuture) {
+                el.classList.add("future");
+                el.title = "Будущий день — запись недоступна";
+            } else {
+                el.addEventListener("click", () => {
+                    window.location.href = "/?date=" + iso;
+                });
+            }
+
+            if (datesWithEntries.has(iso)) el.classList.add("has-entry");
+            if (iso === selectedDate) el.classList.add("selected");
+            grid.appendChild(el);
+        }
+    }
+
+    function changeMonth(delta) {
+        const next = new Date(currentDate);
+        next.setMonth(next.getMonth() + delta);
+
+        if (!isNotFutureMonth(next.getFullYear(), next.getMonth())) {
+            return;
+        }
+
+        currentDate = next;
+        renderCalendar();
+    }
+
+    prevBtn.addEventListener("click", () => changeMonth(-1));
+    nextBtn.addEventListener("click", () => changeMonth(1));
+
+    dateLabel.textContent = selectedDate;
+    dateInput.value = selectedDate;
+
+    if (selectedDate > todayISO) {
+        saveBtn.disabled = true;
+        saveBtn.title = "Нельзя сделать запись на будущий день";
+    }
+
+    renderCalendar();
+</script>
+</body>
+</html>
